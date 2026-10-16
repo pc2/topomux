@@ -47,25 +47,45 @@ Four topologies ship:
 | `loopback`     | `(r, L) <-> (r, L)` for each rank and link |
 | `pair`         | `(r, 0) <-> (r, 1)` within each rank |
 
+Every option has a lowercase and an uppercase short form with the same meaning (`-p` = `-P` = `--platform`).
+The examples use the lowercase forms.
+
+| Short       | Long                 | Applies to | Meaning |
+|-------------|----------------------|------------|---------|
+| `-f`, `-F`  | `--file`             | all        | Read the topology from a `.topo` file |
+| `-b`, `-B`  | `--backend`          | all        | `hardware` or `emulation` |
+| `-p`, `-P`  | `--platform`         | all        | Set `-n` and `-c` for a known system, see [Platforms](#platforms) |
+| `-n`, `-N`  | `--fpgas-per-node`   | hardware   | FPGAs per physical node (default: 3) |
+| `-c`, `-C`  | `--links-per-fpga`   | all        | Links each FPGA has: `loopback` loops all of them (default: 2), the hardware backend rejects links outside `0..N-1` (default: no check) |
+| `-g`, `-G`  | `--gui-url`          | hardware   | Print the fpgalink-gui URL instead |
+| `-d`, `-D`  | `--base-dir`         | emulation  | Base directory for the pipes (default: `.`) |
+| `-s`, `-S`  | `--bsp`              | emulation  | Add fd-number symlinks for this BSP, see [BSP overlay](#bsp-overlay) |
+| `-h`, `-H`  | `--help`             |            | Show help |
+
 ```bash
 # Hardware: emits --fpgalink=... flags on stdout, space-separated.
 # Prepend the toolchain's link tool:
-changeFPGAlinks       $(topomux ring 2 -b hardware --fpgas-per-node 2 --links-per-fpga 4)
-changeFPGAlinksXilinx $(topomux ring 3 -b hardware --fpgas-per-node 3 --links-per-fpga 2)
-# --links-per-fpga N rejects links outside 0..N-1 (default: no check)
+changeFPGAlinks       $(topomux ring 2 -b hardware -p n2s10)
+changeFPGAlinksXilinx $(topomux ring 3 -b hardware -p n2u280)
+
+# Without a platform, or to override its values: -n FPGAs per node, -c links per FPGA
+topomux ring 4 -b hardware -n 1 -c 2
+
+# Loopback on every link of the platform (4 on n2s10)
+topomux loopback 2 -b hardware -p n2s10
 
 # From topology file
-topomux -f topologies/xilinx_ring.topo -b hardware --fpgas-per-node 3
+topomux -f topologies/xilinx_ring.topo -b hardware -p n2u280
 
 # Emulation: prints mkdir/mkfifo/ln-s commands. Pipe to bash to apply.
-topomux ring 4 -b emulation --base-dir /tmp/pipes
-topomux ring 4 -b emulation --base-dir /tmp/pipes | bash
+topomux ring 4 -b emulation -d /tmp/pipes
+topomux ring 4 -b emulation -d /tmp/pipes | bash
 
 # Emulation with a BSP overlay (adds symlinks according to BSP's id layout)
-topomux reverse-ring 4 -b emulation --bsp <name> --base-dir /tmp/pipes | bash
+topomux reverse-ring 4 -b emulation -s <name> -d /tmp/pipes | bash
 
 # FPGA-Link GUI URL
-topomux ring 3 -b hardware --gui-url
+topomux ring 3 -b hardware -g
 ```
 
 ## Library
@@ -96,6 +116,8 @@ g.add_edge((0, 1), (1, 0))
 g.add_edge((1, 1), (0, 0))
 
 # Hardware output (returns list of --fpgalink=... strings)
+hw = topomux.HardwareBackend(topomux.PLATFORMS["n2u280"])
+# or explicitly:
 hw = topomux.HardwareBackend(
     topomux.NodeMapping(fpgas_per_node=3, links_per_fpga=2),
 )
@@ -124,6 +146,18 @@ Each edge is one bidirectional link, and a self-loop `(r, L) <-> (r, L)` is a lo
 Each `(rank, link)` node must appear in at most one edge.
 A node without edges is possible to setup, and still gets an rank directory in the emulation backendend.
 Node and edge attributes are ignored.
+
+## Platforms
+
+`-p` sets `-n` (FPGAs per node) and `-c` (links per FPGA) for a known system.
+Explicit `-n` or `-c` flags override the platform's values.
+
+| Platform | Hardware | FPGAs per node | Links per FPGA |
+|----------|----------|----------------|----------------|
+| `n2u280` | Noctua 2, Xilinx Alveo U280 | 3 | 2 |
+| `n2s10`  | Noctua 2, Bittware 520N (Stratix 10) | 2 | 4 |
+
+In the library, `topomux.PLATFORMS` maps each name to its `NodeMapping`.
 
 ## Topology File Format
 
@@ -154,7 +188,7 @@ For every `(rank, link)` node the graph uses, the emulation backend creates:
 
 Intel BSPs IO-pipes are expecting a file in the process's cwd named after the id matching the number in the `board_spec.xml`.
 
-For these runtimes, topomux emits an additional *fd-number* symlink layer via `--bsp`. For every `(rank, link)` node that is part of an edge:
+For these runtimes, topomux emits an additional *fd-number* symlink layer via `-s`. For every `(rank, link)` node that is part of an edge:
 
 ```
 {base_dir}/rank{R}/{bsp.output_id(L)} -> link_i{L}_tx
@@ -178,4 +212,4 @@ class BittwareS10BSP(BSP):
     def num_links(self):       return 4
 ```
 
-Then `topomux <topology> N --bsp bittware_s10` works end-to-end.
+Then `topomux <topology> N -b emulation -s bittware_s10` works end-to-end.

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from topomux.cli import main
+from topomux.cli import build_parser, main
 
 TOPO_DIR = Path(__file__).resolve().parent.parent / "topologies"
 
@@ -13,38 +13,65 @@ def run(capsys, *argv: str) -> str:
 
 
 def test_hardware_named_topology(capsys):
-    out = run(capsys, "ring", "2", "-b", "hardware", "--fpgas-per-node", "2")
+    out = run(capsys, "ring", "2", "-b", "hardware", "-n", "2")
     assert out == (
         "--fpgalink=n00:acl0:ch1-n00:acl1:ch0 "
         "--fpgalink=n00:acl1:ch1-n00:acl0:ch0\n"
     )
 
 
-def test_hardware_loopback_links_per_rank(capsys):
-    out = run(capsys, "loopback", "1", "--links-per-rank", "1", "-b", "hardware")
+def test_hardware_loopback_links_per_fpga(capsys):
+    out = run(capsys, "loopback", "1", "-c", "1", "-b", "hardware")
     assert out == "--fpgalink=n00:acl0:ch0-n00:acl0:ch0\n"
 
 
+def test_loopback_defaults_to_two_links(capsys):
+    out = run(capsys, "loopback", "1", "-b", "hardware")
+    assert out.split() == [
+        "--fpgalink=n00:acl0:ch0-n00:acl0:ch0",
+        "--fpgalink=n00:acl0:ch1-n00:acl0:ch1",
+    ]
+
+
+def test_emulation_loopback_uses_platform_links(capsys):
+    out = run(capsys, "loopback", "1", "-b", "emulation", "-p", "n2s10")
+    assert [l for l in out.splitlines() if l.startswith("mkfifo")] == [
+        f"mkfifo rank0/link_i{link}_tx" for link in range(4)
+    ]
+
+
+def test_links_per_rank_removed():
+    with pytest.raises(SystemExit):
+        main(["loopback", "1", "-l", "2", "-b", "hardware"])
+
+
+@pytest.mark.parametrize("flag", ["-n", "-c"])
+@pytest.mark.parametrize("value", ["0", "-1", "x"])
+def test_counts_must_be_positive_integers(capsys, flag, value):
+    with pytest.raises(SystemExit):
+        main(["ring", "2", "-b", "hardware", flag, value])
+    assert "error: argument" in capsys.readouterr().err
+
+
 def test_hardware_gui_url(capsys):
-    out = run(capsys, "pair", "1", "-b", "hardware", "--gui-url")
+    out = run(capsys, "pair", "1", "-b", "hardware", "-g")
     assert out.startswith("https://pc2.github.io/fpgalink-gui/index.html?import=")
 
 
 # The exact arguments the hardware CI jobs pass to changeFPGAlinks{,Xilinx}.
-@pytest.mark.parametrize("topo, fpgas_per_node, links_per_fpga, expected", [
-    ("xilinx_loopback.topo", 3, 2, 6),
-    ("xilinx_pair.topo", 3, 2, 3),
-    ("xilinx_ring.topo", 3, 2, 3),
-    ("bittware_loopback.topo", 2, 4, 8),
-    ("bittware_pair.topo", 2, 4, 4),
-    ("bittware_adjacent.topo", 2, 4, 4),
-    ("bittware_different.topo", 2, 4, 4),
+@pytest.mark.parametrize("topo, platform, expected", [
+    ("xilinx_loopback.topo", "n2u280", 6),
+    ("xilinx_pair.topo", "n2u280", 3),
+    ("xilinx_ring.topo", "n2u280", 3),
+    ("bittware_loopback.topo", "n2s10", 8),
+    ("bittware_pair.topo", "n2s10", 4),
+    ("bittware_adjacent.topo", "n2s10", 4),
+    ("bittware_different.topo", "n2s10", 4),
 ])
-def test_ci_invocations(capsys, topo, fpgas_per_node, links_per_fpga, expected):
+def test_ci_invocations(capsys, topo, platform, expected):
     out = run(
         capsys, "-f", str(TOPO_DIR / topo), "-b", "hardware",
-        "--fpgas-per-node", str(fpgas_per_node),
-        "--links-per-fpga", str(links_per_fpga),
+        "-p", platform,
     )
     args = out.split()
     assert len(args) == expected
@@ -53,8 +80,8 @@ def test_ci_invocations(capsys, topo, fpgas_per_node, links_per_fpga, expected):
 
 def test_emulation_with_bsp(capsys):
     out = run(
-        capsys, "loopback", "1", "--links-per-rank", "1",
-        "-b", "emulation", "--base-dir", "p", "--bsp", "bittware_s10",
+        capsys, "loopback", "1", "-c", "1",
+        "-b", "emulation", "-d", "p", "-s", "bittware_s10",
     )
     assert out.splitlines() == [
         "mkdir -p p/rank0",
@@ -79,8 +106,8 @@ def test_backend_required():
 def test_emulation_bsp_link_out_of_range():
     with pytest.raises(ValueError, match="has links 0..3"):
         main([
-            "loopback", "1", "--links-per-rank", "5",
-            "-b", "emulation", "--bsp", "bittware_s10",
+            "loopback", "1", "-c", "5",
+            "-b", "emulation", "-s", "bittware_s10",
         ])
 
 
@@ -88,10 +115,117 @@ def test_emulation_bsp_link_out_of_range():
 def test_hardware_links_per_fpga(capsys, lpf, ok):
     argv = [
         "-f", str(TOPO_DIR / "bittware_pair.topo"), "-b", "hardware",
-        "--fpgas-per-node", "2", "--links-per-fpga", lpf,
+        "-n", "2", "-c", lpf,
     ]
     if ok:
         assert len(run(capsys, *argv).split()) == 4
     else:
         with pytest.raises(ValueError, match="FPGAs have links 0..2"):
             main(argv)
+
+
+def _topo(tmp_path, text: str) -> str:
+    f = tmp_path / "t.topo"
+    f.write_text(text)
+    return str(f)
+
+
+def test_platform_n2u280(capsys, tmp_path):
+    out = run(capsys, "ring", "4", "-b", "hardware", "-p", "n2u280")
+    assert out.split()[2] == "--fpgalink=n00:acl2:ch1-n01:acl0:ch0"
+    assert run(capsys, "loopback", "1", "-b", "hardware",
+               "-p", "n2u280").count("--fpgalink") == 2
+    with pytest.raises(ValueError, match="FPGAs have links 0..1"):
+        main(["-f", _topo(tmp_path, "0.2 - 0.2\n"),
+              "-b", "hardware", "-p", "n2u280"])
+
+
+def test_platform_n2s10(capsys, tmp_path):
+    out = run(capsys, "ring", "3", "-b", "hardware", "-p", "n2s10")
+    assert out.split()[1] == "--fpgalink=n00:acl1:ch1-n01:acl0:ch0"
+    assert run(capsys, "loopback", "1", "-b", "hardware",
+               "-p", "n2s10").count("--fpgalink") == 4
+    with pytest.raises(ValueError, match="FPGAs have links 0..3"):
+        main(["-f", _topo(tmp_path, "0.4 - 0.4\n"),
+              "-b", "hardware", "-p", "n2s10"])
+
+
+def test_platform_explicit_flags_override(capsys):
+    out = run(
+        capsys, "loopback", "4", "-b", "hardware",
+        "-p", "n2u280", "-n", "1", "-c", "3",
+    )
+    assert out.split()[-1] == "--fpgalink=n03:acl0:ch2-n03:acl0:ch2"
+
+
+def test_no_platform_defaults(capsys):
+    out = run(capsys, "loopback", "4", "-c", "9", "-b", "hardware")
+    assert out.split()[-1] == "--fpgalink=n01:acl0:ch8-n01:acl0:ch8"
+
+
+def test_unknown_platform():
+    with pytest.raises(SystemExit):
+        main(["ring", "2", "-b", "hardware", "-p", "n3u55c"])
+
+
+OPTIONS = [
+    ("--file", "-f"), ("--backend", "-b"),
+    ("--bsp", "-s"), ("--base-dir", "-d"), ("--platform", "-p"),
+    ("--fpgas-per-node", "-n"), ("--links-per-fpga", "-c"),
+    ("--gui-url", "-g"), ("--help", "-h"),
+]
+
+
+@pytest.mark.parametrize("long, short", OPTIONS, ids=[o[0] for o in OPTIONS])
+def test_every_option_has_lower_and_upper_short_form(long, short):
+    action = next(
+        a for a in build_parser()._actions if long in a.option_strings
+    )
+    assert sorted(action.option_strings) == sorted(
+        [long, short, short.upper()]
+    )
+
+
+def test_no_option_without_short_forms():
+    long_options = {
+        s for a in build_parser()._actions for s in a.option_strings
+        if s.startswith("--")
+    }
+    assert long_options == {long for long, _ in OPTIONS}
+
+
+@pytest.mark.parametrize("variant", ["long", "lower", "upper"])
+def test_option_forms_are_equivalent(capsys, variant):
+    def opt(long, short):
+        return {"long": long, "lower": short, "upper": short.upper()}[variant]
+
+    hw = run(
+        capsys, "-f", str(TOPO_DIR / "xilinx_ring.topo"),
+        opt("--backend", "-b"), "hardware", opt("--platform", "-p"),
+        "n2u280", opt("--fpgas-per-node", "-n"), "2",
+        opt("--links-per-fpga", "-c"), "2",
+    )
+    url = run(
+        capsys, "loopback", "2", opt("--links-per-fpga", "-c"), "1",
+        opt("--backend", "-b"), "hardware", opt("--gui-url", "-g"),
+    )
+    emu = run(
+        capsys, "loopback", "1", opt("--links-per-fpga", "-c"), "1",
+        opt("--backend", "-b"), "emulation", opt("--base-dir", "-d"), "p",
+        opt("--bsp", "-s"), "bittware_s10",
+    )
+    assert hw == (
+        "--fpgalink=n00:acl0:ch1-n00:acl1:ch0 "
+        "--fpgalink=n00:acl1:ch1-n01:acl0:ch0 "
+        "--fpgalink=n01:acl0:ch1-n00:acl0:ch0\n"
+    )
+    assert url.startswith("https://pc2.github.io/fpgalink-gui/")
+    assert "ln -s link_i0_tx p/rank0/1" in emu.splitlines()
+
+
+@pytest.mark.parametrize("flag", ["-h", "-H", "--help"])
+def test_help(capsys, flag):
+    with pytest.raises(SystemExit) as exc:
+        main([flag])
+    assert exc.value.code == 0
+    assert "--links-per-fpga" in capsys.readouterr().out

@@ -9,7 +9,7 @@ from topomux.topologies import (
     links,
     validate,
 )
-from topomux.backends.hardware import HardwareBackend, NodeMapping
+from topomux.backends.hardware import PLATFORMS, HardwareBackend, NodeMapping
 from topomux.backends.emulation import (
     BSP,
     BittwareS10BSP,
@@ -30,6 +30,7 @@ __all__ = [
     "validate",
     "HardwareBackend",
     "NodeMapping",
+    "PLATFORMS",
     "BSP",
     "BittwareS10BSP",
     "BSP_REGISTRY",

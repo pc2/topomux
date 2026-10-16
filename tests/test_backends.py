@@ -228,3 +228,10 @@ def test_hardware_without_links_per_fpga_allows_any_link():
     assert topomux.HardwareBackend().emit(g)[-1] == (
         "--fpgalink=n00:acl0:ch7-n00:acl0:ch7"
     )
+
+
+def test_platforms():
+    assert topomux.PLATFORMS["n2u280"] == topomux.NodeMapping(
+        fpgas_per_node=3, links_per_fpga=2)
+    assert topomux.PLATFORMS["n2s10"] == topomux.NodeMapping(
+        fpgas_per_node=2, links_per_fpga=4)

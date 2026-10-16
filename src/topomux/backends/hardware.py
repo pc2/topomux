@@ -28,6 +28,14 @@ class NodeMapping:
         return f"n{self.node_id(rank):02d}:acl{self.acl_id(rank)}"
 
 
+PLATFORMS: dict[str, NodeMapping] = {
+    # Noctua 2 Xilinx Alveo U280: 3 FPGAs per node, 2 links each
+    "n2u280": NodeMapping(fpgas_per_node=3, links_per_fpga=2),
+    # Noctua 2 Bittware 520N (Stratix 10): 2 FPGAs per node, 4 links each
+    "n2s10": NodeMapping(fpgas_per_node=2, links_per_fpga=4),
+}
+
+
 class HardwareBackend:
     """Generates --fpgalink=... strings for any toolchain that consumes the
     Xilinx / oneAPI fpgalink syntax. Callers prepend their own tool name

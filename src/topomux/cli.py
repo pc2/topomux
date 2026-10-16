@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from topomux import topologies
 from topomux.backends.emulation import BSP_REGISTRY, EmulationBackend
-from topomux.backends.hardware import HardwareBackend, NodeMapping
+from topomux.backends.hardware import PLATFORMS, HardwareBackend, NodeMapping
 
 TOPOLOGIES = {
     "ring": topologies.ring,
@@ -16,10 +17,26 @@ TOPOLOGIES = {
 }
 
 
+def _positive_int(value: str) -> int:
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not an integer: {value!r}")
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {n}")
+    return n
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="topomux",
         description="Generate FPGA communication topologies",
+        add_help=False,
+    )
+    parser.add_argument(
+        "--help", "-h", "-H",
+        action="help",
+        help="Show this help message and exit",
     )
 
     # Topology source: either a named topology or a file
@@ -31,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Standard topology type",
     )
     topo_group.add_argument(
-        "--file", "-f",
+        "--file", "-f", "-F",
         type=Path,
         dest="topo_file",
         help="Topology file (.topo)",
@@ -45,14 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--links-per-rank",
-        type=int,
-        default=2,
-        help="Links per rank for loopback (default: 2)",
-    )
-
-    parser.add_argument(
-        "--backend", "-b",
+        "--backend", "-b", "-B",
         choices=["emulation", "hardware"],
         required=True,
         help="Output backend",
@@ -60,13 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Emulation options
     parser.add_argument(
-        "--bsp",
+        "--bsp", "-s", "-S",
         choices=list(BSP_REGISTRY.keys()),
         default=None,
         help="Add fd-number symlinks per this BSP's id layout",
     )
     parser.add_argument(
-        "--base-dir",
+        "--base-dir", "-d", "-D",
         type=Path,
         default=Path("."),
         help="Base directory for emulation links",
@@ -74,19 +84,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Hardware options
     parser.add_argument(
-        "--fpgas-per-node",
-        type=int,
-        default=3,
-        help="FPGAs per physical node (default: 3)",
-    )
-    parser.add_argument(
-        "--links-per-fpga",
-        type=int,
+        "--platform", "-p", "-P",
+        choices=list(PLATFORMS.keys()),
         default=None,
-        help="Reject links outside 0..N-1 (default: no check)",
+        help="Set -n/--fpgas-per-node and -c/--links-per-fpga for this platform",
     )
     parser.add_argument(
-        "--gui-url",
+        "--fpgas-per-node", "-n", "-N",
+        type=_positive_int,
+        default=None,
+        help="FPGAs per physical node (default: 3, or the platform's)",
+    )
+    parser.add_argument(
+        "--links-per-fpga", "-c", "-C",
+        type=_positive_int,
+        default=None,
+        help="Links per FPGA: loopback loops all of them, hardware "
+        "rejects links outside 0..N-1 (default: the platform's, else "
+        "2 for loopback and no check)",
+    )
+    parser.add_argument(
+        "--gui-url", "-g", "-G",
         action="store_true",
         help="Print fpgalink-gui URL",
     )
@@ -97,6 +115,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    mapping = PLATFORMS[args.platform] if args.platform else NodeMapping()
+    # Explicit flags override the platform's values.
+    overrides = {
+        "fpgas_per_node": args.fpgas_per_node,
+        "links_per_fpga": args.links_per_fpga,
+    }
+    mapping = replace(
+        mapping, **{k: v for k, v in overrides.items() if v is not None},
+    )
 
     # Build topology
     if args.topo_file:
@@ -110,17 +138,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.topology == "loopback":
             graph = topo_fn(
                 args.num_ranks,
-                links_per_rank=args.links_per_rank,
+                links_per_rank=(
+                    2 if mapping.links_per_fpga is None
+                    else mapping.links_per_fpga
+                ),
             )
         else:
             graph = topo_fn(args.num_ranks)
 
     # Emit output
     if args.backend == "hardware":
-        mapping = NodeMapping(
-            fpgas_per_node=args.fpgas_per_node,
-            links_per_fpga=args.links_per_fpga,
-        )
         backend = HardwareBackend(mapping=mapping)
         if args.gui_url:
             print(backend.emit_gui_url(graph))
