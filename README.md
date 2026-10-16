@@ -119,6 +119,7 @@ Nodes must be `(rank, link)` tuples of plain Python `int`s.
 `emit()` calls `topomux.validate(g)` and raises `ValueError` if it is not valid.
 Each edge is one bidirectional link, and a self-loop `(r, L) <-> (r, L)` is a loopback.
 Each `(rank, link)` node must appear in at most one edge.
+A node without edges is possible to setup, and still gets an rank directory in the emulation backendend.
 Node and edge attributes are ignored.
 
 ## Topology File Format
@@ -150,7 +151,7 @@ For every `(rank, link)` node the graph uses, the emulation backend creates:
 
 Intel BSPs IO-pipes are expecting a file in the process's cwd named after the id matching the number in the `board_spec.xml`.
 
-For these runtimes, topomux emits an additional *fd-number* symlink layer via `--bsp`. For every `(rank, link)` node in the graph:
+For these runtimes, topomux emits an additional *fd-number* symlink layer via `--bsp`. For every `(rank, link)` node that is part of an edge:
 
 ```
 {base_dir}/rank{R}/{bsp.output_id(L)} -> link_i{L}_tx

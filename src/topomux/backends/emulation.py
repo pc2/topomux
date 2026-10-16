@@ -124,6 +124,9 @@ class EmulationBackend:
         if self.bsp is not None:
             for rank in rank_ids:
                 for link in links_of(graph, rank):
+                    # Unused link: no FIFO exists, so no fd symlinks either.
+                    if nx.is_isolate(graph, (rank, link)):
+                        continue
                     tx = self.naming.tx_path(self.base_dir, rank, link)
                     rx = self.naming.rx_path(self.base_dir, rank, link)
                     rank_dir = self.naming.rank_dir(self.base_dir, rank)

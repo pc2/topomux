@@ -131,3 +131,35 @@ def test_emulation_applies_cleanly(tmp_path, graph, absolute):
                 rank_dir / f"link_i{link}_tx").resolve()
             assert (rank_dir / str(bsp.input_id(link))).resolve() == (
                 rank_dir / f"link_i{link}_rx").resolve()
+
+
+def test_hardware_ignores_unused_link():
+    g = topomux.loopback(1, links_per_rank=1)
+    g.add_node((1, 0))
+    assert topomux.HardwareBackend().emit(g) == [
+        "--fpgalink=n00:acl0:ch0-n00:acl0:ch0",
+    ]
+
+
+def test_emulation_unused_link_gets_only_rank_dir(tmp_path):
+    g = topomux.loopback(1, links_per_rank=1)
+    g.add_node((0, 1))
+    g.add_node((1, 0))
+    emu = topomux.EmulationBackend(
+        base_dir="p", bsp=topomux.BittwareS10BSP(),
+    )
+    actions = emu.emit(g)
+    assert actions == [
+        "mkdir -p p/rank0",
+        "mkdir -p p/rank1",
+        "mkfifo p/rank0/link_i0_tx",
+        "ln -s link_i0_tx p/rank0/link_i0_rx",
+        "ln -s link_i0_tx p/rank0/1",
+        "ln -s link_i0_rx p/rank0/0",
+    ]
+
+    _apply(actions, cwd=tmp_path)
+    assert sorted(os.listdir(tmp_path / "p" / "rank0")) == [
+        "0", "1", "link_i0_rx", "link_i0_tx",
+    ]
+    assert os.listdir(tmp_path / "p" / "rank1") == []
