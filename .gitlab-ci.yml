@@ -1,10 +1,9 @@
 stages:
-  - setup
   - test
 
 variables:
-  ACCOUNT: "hpc-prf-cifi"
-  XILINX_EXCLUDE_NODES: "n2fpga02,n2fpga12,n2fpga16"
+  ACCOUNT: "hpc-prf-devccl"
+  XILINX_EXCLUDE_NODES: "n2fpga04,n2fpga08,n2fpga09,n2fpga12"
   BITTWARE_EXCLUDE_NODES: "n2fpga20,n2fpga22,n2fpga23,n2fpga26"
 
 default:
@@ -12,36 +11,22 @@ default:
     CI_JOB_JWT:
       aud: https://git.uni-paderborn.de
   tags:
-    - slurm
+    - noctua2-slurm
+  # Each job builds its own venv, because a venv holds absolute paths and parallel jobs run in different build directories.
   before_script:
     - source env.sh
+    - make venv
     - source .venv/bin/activate
 
 # ==========================================================================
-# Setup — create the venv once and pass it to all tests via artifacts
-# ==========================================================================
-
-setup:venv:
-  stage: setup
-  variables:
-    SCHEDULER_PARAMETERS: "-A ${ACCOUNT} -p normal -t 00:10:00 -n 1"
-  before_script:
-    - source env.sh
-  script:
-    - make venv
-  artifacts:
-    paths:
-      - .venv
-
-# ==========================================================================
-# Unit tests: CPU only, gate the FPGA jobs
+# Unit tests run on the shell runner and gate the FPGA jobs.
 # ==========================================================================
 
 test:unit:
   stage: test
-  variables:
-    SCHEDULER_PARAMETERS: "-A ${ACCOUNT} -p normal -t 00:10:00 -n 1"
-  needs: [setup:venv]
+  tags:
+    - noctua2-shell
+  needs: []
   script:
     - pytest -v
 
@@ -60,13 +45,14 @@ test:unit:
       --constraint="xilinx_u280_xrt${XRT_VER}"
       -x ${XILINX_EXCLUDE_NODES}
       -t 01:00:00 -N 1
-  needs: [setup:venv, test:unit]
+  needs: [test:unit]
 
 test:xilinx:loopback:
   extends: .xilinx_test
   script:
     - source xilinx_env.sh $XRT_VER
-    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_loopback.topo -b hardware -p n2u280)
+    - links=$(topomux -f topologies/xilinx_loopback.topo -b hardware -p n2u280)
+    - changeFPGAlinksXilinx $links
     - sleep 60
     - linktest -p /opt/software/FPGA/aurora-linktest/$XRT_VER/aurora_flow_test_hw.xclbin -m 0 -f 128 -i 100 -l
 
@@ -74,7 +60,8 @@ test:xilinx:pair:
   extends: .xilinx_test
   script:
     - source xilinx_env.sh $XRT_VER
-    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_pair.topo -b hardware -p n2u280)
+    - links=$(topomux -f topologies/xilinx_pair.topo -b hardware -p n2u280)
+    - changeFPGAlinksXilinx $links
     - sleep 60
     - linktest -p /opt/software/FPGA/aurora-linktest/$XRT_VER/aurora_flow_test_hw.xclbin -m 1 -f 128 -i 100 -l
 
@@ -82,7 +69,8 @@ test:xilinx:ring:
   extends: .xilinx_test
   script:
     - source xilinx_env.sh $XRT_VER
-    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_ring.topo -b hardware -p n2u280)
+    - links=$(topomux -f topologies/xilinx_ring.topo -b hardware -p n2u280)
+    - changeFPGAlinksXilinx $links
     - sleep 60
     - linktest -p /opt/software/FPGA/aurora-linktest/$XRT_VER/aurora_flow_test_hw.xclbin -m 2 -f 128 -i 100 -l
 
@@ -98,13 +86,14 @@ test:xilinx:ring:
       --constraint="bittware_520n_20.4.0_max"
       -x ${BITTWARE_EXCLUDE_NODES}
       -t 00:30:00 -N 1
-  needs: [setup:venv, test:unit]
+  needs: [test:unit]
 
 test:bittware:loopback:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_loopback.topo -b hardware -p n2s10)
+    - links=$(topomux -f topologies/bittware_loopback.topo -b hardware -p n2s10)
+    - changeFPGAlinks $links
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 3 -d 0
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 3 -d 1
@@ -113,7 +102,8 @@ test:bittware:pair:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_pair.topo -b hardware -p n2s10)
+    - links=$(topomux -f topologies/bittware_pair.topo -b hardware -p n2s10)
+    - changeFPGAlinks $links
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_2 -m 0
 
@@ -121,7 +111,8 @@ test:bittware:adjacent:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_adjacent.topo -b hardware -p n2s10)
+    - links=$(topomux -f topologies/bittware_adjacent.topo -b hardware -p n2s10)
+    - changeFPGAlinks $links
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_2 -m 1
 
@@ -129,7 +120,8 @@ test:bittware:different:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_different.topo -b hardware -p n2s10)
+    - links=$(topomux -f topologies/bittware_different.topo -b hardware -p n2s10)
+    - changeFPGAlinks $links
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 0 -d 0
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 1 -d 1

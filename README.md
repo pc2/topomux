@@ -11,7 +11,7 @@ With `uv`:
 ```bash
 uv venv --python 3.14
 source .venv/bin/activate
-uv pip install git+https://github.com/papeg/topomux
+uv pip install git+https://github.com/pc2/topomux
 # or editable from a local checkout:
 uv pip install -e /path/to/topomux
 ```
