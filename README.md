@@ -106,7 +106,7 @@ Both backends accept any `nx.Graph` directly, so you can build or transform a to
 Nodes must be `(rank, link)` tuples of plain Python `int`s.
 `emit()` calls `topomux.validate(g)` and raises `ValueError` if it is not valid.
 Each edge is one bidirectional link, and a self-loop `(r, L) <-> (r, L)` is a loopback.
-Each `(rank, link)` node should appear in at most one edge.
+Each `(rank, link)` node must appear in at most one edge.
 Node and edge attributes are ignored.
 
 ## Topology File Format

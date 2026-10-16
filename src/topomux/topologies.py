@@ -137,7 +137,8 @@ def links(g: nx.Graph, rank: int) -> list[int]:
 
 
 def validate(g: nx.Graph) -> None:
-    """Raise ValueError if any node is not a (int, int) tuple."""
+    """Raise ValueError if any node is not a (int, int) tuple, or if any
+    node is part of more than one edge (a self-loop counts as one)."""
     for node in g.nodes:
         if (
             not isinstance(node, tuple)
@@ -147,4 +148,16 @@ def validate(g: nx.Graph) -> None:
         ):
             raise ValueError(
                 f"Node {node!r} is not a (rank: int, link: int) tuple"
+            )
+
+    incident: dict[tuple[int, int], list[tuple]] = {}
+    for u, v in g.edges():
+        incident.setdefault(u, []).append((u, v))
+        if v != u:
+            incident.setdefault(v, []).append((u, v))
+    for node, edges in incident.items():
+        if len(edges) > 1:
+            raise ValueError(
+                f"Node {node!r} is part of {len(edges)} edges {edges!r}, "
+                f"expected at most one"
             )
