@@ -115,7 +115,19 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    try:
+        return _run(parser, args)
+    except ValueError as e:
+        # Invalid topology or one the backend can't emit: one error line,
+        # no traceback and no usage (the arguments themselves were fine).
+        _fail(parser, str(e))
 
+
+def _fail(parser: argparse.ArgumentParser, message: str) -> None:
+    parser.exit(2, f"{parser.prog}: error: {message}\n")
+
+
+def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     mapping = PLATFORMS[args.platform] if args.platform else NodeMapping()
     # Explicit flags override the platform's values.
     overrides = {
@@ -128,7 +140,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # Build topology
     if args.topo_file:
-        graph = topologies.from_file(args.topo_file)
+        try:
+            graph = topologies.from_file(args.topo_file)
+        except OSError as e:
+            _fail(parser, f"cannot read {args.topo_file}: {e.strerror}")
     else:
         if args.num_ranks is None:
             parser.error("num_ranks is required for standard topologies")

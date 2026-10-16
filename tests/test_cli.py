@@ -1,3 +1,5 @@
+import contextlib
+import re
 from pathlib import Path
 
 import pytest
@@ -5,6 +7,18 @@ import pytest
 from topomux.cli import build_parser, main
 
 TOPO_DIR = Path(__file__).resolve().parent.parent / "topologies"
+
+
+@contextlib.contextmanager
+def raises_usage_error(capsys, match: str):
+    """Expect main() to exit with code 2 and a one-line error on stderr."""
+    with pytest.raises(SystemExit) as exc:
+        yield
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert re.search(r"topomux: error: .*" + match, err), err
+    assert "Traceback" not in err
+    assert "usage:" not in err
 
 
 def run(capsys, *argv: str) -> str:
@@ -103,8 +117,8 @@ def test_backend_required():
         main(["ring", "2"])
 
 
-def test_emulation_bsp_link_out_of_range():
-    with pytest.raises(ValueError, match="has links 0..3"):
+def test_emulation_bsp_link_out_of_range(capsys):
+    with raises_usage_error(capsys, "has links 0..3"):
         main([
             "loopback", "1", "-c", "5",
             "-b", "emulation", "-s", "bittware_s10",
@@ -120,7 +134,7 @@ def test_hardware_links_per_fpga(capsys, lpf, ok):
     if ok:
         assert len(run(capsys, *argv).split()) == 4
     else:
-        with pytest.raises(ValueError, match="FPGAs have links 0..2"):
+        with raises_usage_error(capsys, "FPGAs have links 0..2"):
             main(argv)
 
 
@@ -135,7 +149,7 @@ def test_platform_n2u280(capsys, tmp_path):
     assert out.split()[2] == "--fpgalink=n00:acl2:ch1-n01:acl0:ch0"
     assert run(capsys, "loopback", "1", "-b", "hardware",
                "-p", "n2u280").count("--fpgalink") == 2
-    with pytest.raises(ValueError, match="FPGAs have links 0..1"):
+    with raises_usage_error(capsys, "FPGAs have links 0..1"):
         main(["-f", _topo(tmp_path, "0.2 - 0.2\n"),
               "-b", "hardware", "-p", "n2u280"])
 
@@ -145,7 +159,7 @@ def test_platform_n2s10(capsys, tmp_path):
     assert out.split()[1] == "--fpgalink=n00:acl1:ch1-n01:acl0:ch0"
     assert run(capsys, "loopback", "1", "-b", "hardware",
                "-p", "n2s10").count("--fpgalink") == 4
-    with pytest.raises(ValueError, match="FPGAs have links 0..3"):
+    with raises_usage_error(capsys, "FPGAs have links 0..3"):
         main(["-f", _topo(tmp_path, "0.4 - 0.4\n"),
               "-b", "hardware", "-p", "n2s10"])
 
@@ -229,3 +243,18 @@ def test_help(capsys, flag):
         main([flag])
     assert exc.value.code == 0
     assert "--links-per-fpga" in capsys.readouterr().out
+
+
+def test_missing_topo_file(capsys, tmp_path):
+    with raises_usage_error(capsys, "cannot read .*nope.topo: No such file"):
+        main(["-f", str(tmp_path / "nope.topo"), "-b", "hardware"])
+
+
+@pytest.mark.parametrize("text, match", [
+    ("0.0 - 1.0\n0.0 - 2.0\n", "at most one"),
+    ("star 4\n", "Unknown command"),
+    ("0.0.0 - 1.1\n", "Invalid endpoint"),
+])
+def test_invalid_topo_file(capsys, tmp_path, text, match):
+    with raises_usage_error(capsys, match):
+        main(["-f", _topo(tmp_path, text), "-b", "emulation"])
