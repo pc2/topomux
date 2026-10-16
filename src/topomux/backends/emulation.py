@@ -87,6 +87,14 @@ class EmulationBackend:
     def emit(self, graph: nx.Graph) -> list[str]:
         """Return the mkdir/mkfifo/ln-s shell commands for the graph."""
         validate(graph)
+        if self.bsp is not None:
+            num_links = self.bsp.num_links()
+            for rank, link in graph.nodes:
+                if link >= num_links:
+                    raise ValueError(
+                        f"Node {(rank, link)!r}: BSP '{self.bsp.name}' has "
+                        f"links 0..{num_links - 1}"
+                    )
         actions: list[str] = []
         rank_ids = ranks(graph)
 

@@ -66,7 +66,7 @@ test:xilinx:loopback:
   extends: .xilinx_test
   script:
     - source xilinx_env.sh $XRT_VER
-    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_loopback.topo -b hardware --fpgas-per-node 3)
+    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_loopback.topo -b hardware --fpgas-per-node 3 --links-per-fpga 2)
     - sleep 60
     - linktest -p /opt/software/FPGA/aurora-linktest/$XRT_VER/aurora_flow_test_hw.xclbin -m 0 -f 128 -i 100 -l
 
@@ -74,7 +74,7 @@ test:xilinx:pair:
   extends: .xilinx_test
   script:
     - source xilinx_env.sh $XRT_VER
-    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_pair.topo -b hardware --fpgas-per-node 3)
+    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_pair.topo -b hardware --fpgas-per-node 3 --links-per-fpga 2)
     - sleep 60
     - linktest -p /opt/software/FPGA/aurora-linktest/$XRT_VER/aurora_flow_test_hw.xclbin -m 1 -f 128 -i 100 -l
 
@@ -82,7 +82,7 @@ test:xilinx:ring:
   extends: .xilinx_test
   script:
     - source xilinx_env.sh $XRT_VER
-    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_ring.topo -b hardware --fpgas-per-node 3)
+    - changeFPGAlinksXilinx $(topomux -f topologies/xilinx_ring.topo -b hardware --fpgas-per-node 3 --links-per-fpga 2)
     - sleep 60
     - linktest -p /opt/software/FPGA/aurora-linktest/$XRT_VER/aurora_flow_test_hw.xclbin -m 2 -f 128 -i 100 -l
 
@@ -104,7 +104,7 @@ test:bittware:loopback:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_loopback.topo -b hardware --fpgas-per-node 2)
+    - changeFPGAlinks $(topomux -f topologies/bittware_loopback.topo -b hardware --fpgas-per-node 2 --links-per-fpga 4)
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 3 -d 0
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 3 -d 1
@@ -113,7 +113,7 @@ test:bittware:pair:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_pair.topo -b hardware --fpgas-per-node 2)
+    - changeFPGAlinks $(topomux -f topologies/bittware_pair.topo -b hardware --fpgas-per-node 2 --links-per-fpga 4)
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_2 -m 0
 
@@ -121,7 +121,7 @@ test:bittware:adjacent:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_adjacent.topo -b hardware --fpgas-per-node 2)
+    - changeFPGAlinks $(topomux -f topologies/bittware_adjacent.topo -b hardware --fpgas-per-node 2 --links-per-fpga 4)
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_2 -m 1
 
@@ -129,7 +129,7 @@ test:bittware:different:
   extends: .bittware_test
   script:
     - source bittware_env.sh
-    - changeFPGAlinks $(topomux -f topologies/bittware_different.topo -b hardware --fpgas-per-node 2)
+    - changeFPGAlinks $(topomux -f topologies/bittware_different.topo -b hardware --fpgas-per-node 2 --links-per-fpga 4)
     - sleep 60
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 0 -d 0
     - testFPGAlinks_throughput_nodes_1_cards_1 -m 1 -d 1

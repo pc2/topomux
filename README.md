@@ -50,8 +50,9 @@ Four topologies ship:
 ```bash
 # Hardware: emits --fpgalink=... flags on stdout, space-separated.
 # Prepend the toolchain's link tool:
-changeFPGAlinks       $(topomux ring 2 -b hardware --fpgas-per-node 2)
-changeFPGAlinksXilinx $(topomux ring 3 -b hardware --fpgas-per-node 3)
+changeFPGAlinks       $(topomux ring 2 -b hardware --fpgas-per-node 2 --links-per-fpga 4)
+changeFPGAlinksXilinx $(topomux ring 3 -b hardware --fpgas-per-node 3 --links-per-fpga 2)
+# --links-per-fpga N rejects links outside 0..N-1 (default: no check)
 
 # From topology file
 topomux -f topologies/xilinx_ring.topo -b hardware --fpgas-per-node 3
@@ -95,7 +96,9 @@ g.add_edge((0, 1), (1, 0))
 g.add_edge((1, 1), (0, 0))
 
 # Hardware output (returns list of --fpgalink=... strings)
-hw = topomux.HardwareBackend(topomux.NodeMapping(fpgas_per_node=3))
+hw = topomux.HardwareBackend(
+    topomux.NodeMapping(fpgas_per_node=3, links_per_fpga=2),
+)
 print(" ".join(hw.emit(g)))
 print(hw.emit_gui_url(g))
 
@@ -115,7 +118,7 @@ for action in emu.emit(g):
 
 The topology constructors are convenience helpers.
 Both backends accept any `nx.Graph` directly, so you can build or transform a topology with regular NetworkX operations and pass it to `emit()`.
-Nodes must be `(rank, link)` tuples of plain Python `int`s.
+Nodes must be `(rank, link)` tuples of non-negative integers (`int` or e.g. `numpy.int64`, but not `bool`).
 `emit()` calls `topomux.validate(g)` and raises `ValueError` if it is not valid.
 Each edge is one bidirectional link, and a self-loop `(r, L) <-> (r, L)` is a loopback.
 Each `(rank, link)` node must appear in at most one edge.
@@ -159,6 +162,8 @@ For these runtimes, topomux emits an additional *fd-number* symlink layer via `-
 ```
 
 A `BSP` describes *pure board layout*: `input_id(link)` and `output_id(link)` return the ids the hardware platform assigns to each link direction.
+`num_links()` is the number of links the board has.
+With a BSP set, `emit()` raises `ValueError` for any node whose link is outside `0..num_links()-1`.
 
 ### Shipped BSPs
 

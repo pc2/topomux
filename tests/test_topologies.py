@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import networkx as nx
+import numpy as np
 import pytest
 
 import topomux
@@ -100,7 +101,9 @@ def test_from_file_overlapping_commands_rejected(tmp_path):
         topomux.from_file(f)
 
 
-@pytest.mark.parametrize("node", [0, (0,), (0, 0, 0), ("0", 0), (0, 1.0)])
+@pytest.mark.parametrize(
+    "node", [0, (0,), (0, 0, 0), ("0", 0), (0, 1.0), (True, 0), (0, False)],
+)
 def test_validate_rejects_malformed_nodes(node):
     g = nx.Graph()
     g.add_node(node)
@@ -142,3 +145,17 @@ def test_validate_rejects_parallel_multigraph_edges():
 def test_from_edge_list_validates():
     with pytest.raises(ValueError, match="at most one"):
         topomux.from_edge_list([((0, 0), (1, 0)), ((0, 0), (2, 0))])
+
+
+@pytest.mark.parametrize("node", [(-1, 0), (0, -1)])
+def test_validate_rejects_negative(node):
+    g = nx.Graph()
+    g.add_node(node)
+    with pytest.raises(ValueError, match="negative"):
+        topomux.validate(g)
+
+
+def test_validate_accepts_numpy_ints():
+    g = nx.Graph()
+    g.add_edge((np.int64(0), np.int64(1)), (np.int32(1), 0))
+    topomux.validate(g)

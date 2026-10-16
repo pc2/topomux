@@ -31,19 +31,20 @@ def test_hardware_gui_url(capsys):
 
 
 # The exact arguments the hardware CI jobs pass to changeFPGAlinks{,Xilinx}.
-@pytest.mark.parametrize("topo, fpgas_per_node, expected", [
-    ("xilinx_loopback.topo", 3, 6),
-    ("xilinx_pair.topo", 3, 3),
-    ("xilinx_ring.topo", 3, 3),
-    ("bittware_loopback.topo", 2, 8),
-    ("bittware_pair.topo", 2, 4),
-    ("bittware_adjacent.topo", 2, 4),
-    ("bittware_different.topo", 2, 4),
+@pytest.mark.parametrize("topo, fpgas_per_node, links_per_fpga, expected", [
+    ("xilinx_loopback.topo", 3, 2, 6),
+    ("xilinx_pair.topo", 3, 2, 3),
+    ("xilinx_ring.topo", 3, 2, 3),
+    ("bittware_loopback.topo", 2, 4, 8),
+    ("bittware_pair.topo", 2, 4, 4),
+    ("bittware_adjacent.topo", 2, 4, 4),
+    ("bittware_different.topo", 2, 4, 4),
 ])
-def test_ci_invocations(capsys, topo, fpgas_per_node, expected):
+def test_ci_invocations(capsys, topo, fpgas_per_node, links_per_fpga, expected):
     out = run(
         capsys, "-f", str(TOPO_DIR / topo), "-b", "hardware",
         "--fpgas-per-node", str(fpgas_per_node),
+        "--links-per-fpga", str(links_per_fpga),
     )
     args = out.split()
     assert len(args) == expected
@@ -73,3 +74,24 @@ def test_missing_num_ranks(capsys):
 def test_backend_required():
     with pytest.raises(SystemExit):
         main(["ring", "2"])
+
+
+def test_emulation_bsp_link_out_of_range():
+    with pytest.raises(ValueError, match="has links 0..3"):
+        main([
+            "loopback", "1", "--links-per-rank", "5",
+            "-b", "emulation", "--bsp", "bittware_s10",
+        ])
+
+
+@pytest.mark.parametrize("lpf, ok", [("4", True), ("3", False)])
+def test_hardware_links_per_fpga(capsys, lpf, ok):
+    argv = [
+        "-f", str(TOPO_DIR / "bittware_pair.topo"), "-b", "hardware",
+        "--fpgas-per-node", "2", "--links-per-fpga", lpf,
+    ]
+    if ok:
+        assert len(run(capsys, *argv).split()) == 4
+    else:
+        with pytest.raises(ValueError, match="FPGAs have links 0..2"):
+            main(argv)

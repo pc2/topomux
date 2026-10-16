@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numbers
 from pathlib import Path
 
 import networkx as nx
@@ -136,18 +137,27 @@ def links(g: nx.Graph, rank: int) -> list[int]:
     return sorted({link for r, link in g.nodes if r == rank})
 
 
+def _is_int(x) -> bool:
+    """Any integer type (int, numpy.int64, ...) except bool."""
+    return isinstance(x, numbers.Integral) and not isinstance(x, bool)
+
+
 def validate(g: nx.Graph) -> None:
-    """Raise ValueError if any node is not a (int, int) tuple, or if any
-    node is part of more than one edge (a self-loop counts as one)."""
+    """Raise ValueError if any node is not a (rank, link) tuple of
+    non-negative integers, or if any node is part of more than one edge
+    (a self-loop counts as one)."""
     for node in g.nodes:
         if (
             not isinstance(node, tuple)
             or len(node) != 2
-            or not isinstance(node[0], int)
-            or not isinstance(node[1], int)
+            or not all(_is_int(x) for x in node)
         ):
             raise ValueError(
                 f"Node {node!r} is not a (rank: int, link: int) tuple"
+            )
+        if node[0] < 0 or node[1] < 0:
+            raise ValueError(
+                f"Node {node!r} has a negative rank or link"
             )
 
     incident: dict[tuple[int, int], list[tuple]] = {}

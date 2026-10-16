@@ -10,9 +10,13 @@ from topomux.topologies import validate
 
 @dataclass
 class NodeMapping:
-    """Maps a flat rank index to nXX:aclY hardware coordinates."""
+    """Maps a flat rank index to nXX:aclY hardware coordinates.
+
+    ``links_per_fpga`` is the number of links each FPGA has; ``None``
+    disables the range check."""
 
     fpgas_per_node: int = 3
+    links_per_fpga: int | None = None
 
     def node_id(self, rank: int) -> int:
         return rank // self.fpgas_per_node
@@ -35,6 +39,14 @@ class HardwareBackend:
     def emit(self, graph: nx.Graph) -> list[str]:
         """Return list of --fpgalink=... strings, one per edge."""
         validate(graph)
+        lpf = self.mapping.links_per_fpga
+        if lpf is not None:
+            for rank, link in graph.nodes:
+                if link >= lpf:
+                    raise ValueError(
+                        f"Node {(rank, link)!r}: FPGAs have links "
+                        f"0..{lpf - 1}"
+                    )
         links: list[str] = []
         for (r1, l1), (r2, l2) in graph.edges:
             src = f"{self.mapping.format(r1)}:ch{l1}"

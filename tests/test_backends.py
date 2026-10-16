@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import networkx as nx
+import numpy as np
 import pytest
 
 import topomux
@@ -163,3 +164,67 @@ def test_emulation_unused_link_gets_only_rank_dir(tmp_path):
         "0", "1", "link_i0_rx", "link_i0_tx",
     ]
     assert os.listdir(tmp_path / "p" / "rank1") == []
+
+
+def test_emulation_bsp_rejects_link_out_of_range():
+    g = nx.Graph()
+    g.add_edge((0, 0), (1, 4))
+    emu = topomux.EmulationBackend(
+        base_dir="p", bsp=topomux.BittwareS10BSP(),
+    )
+    with pytest.raises(ValueError, match="'bittware_s10' has links 0..3"):
+        emu.emit(g)
+
+
+def test_emulation_bsp_rejects_unused_link_out_of_range():
+    g = topomux.loopback(1, links_per_rank=1)
+    g.add_node((0, 4))
+    emu = topomux.EmulationBackend(
+        base_dir="p", bsp=topomux.BittwareS10BSP(),
+    )
+    with pytest.raises(ValueError, match=r"Node \(0, 4\)"):
+        emu.emit(g)
+
+
+def test_emulation_without_bsp_allows_any_link():
+    g = topomux.loopback(1, links_per_rank=8)
+    assert "mkfifo p/rank0/link_i7_tx" in topomux.EmulationBackend(
+        base_dir="p").emit(g)
+
+
+def test_emulation_bsp_accepts_all_board_links():
+    topomux.EmulationBackend(
+        base_dir="p", bsp=topomux.BittwareS10BSP(),
+    ).emit(topomux.loopback(2, links_per_rank=4))
+
+
+def test_node_mapping_numpy_ints():
+    m = topomux.NodeMapping(fpgas_per_node=2)
+    assert m.format(np.int64(3)) == "n01:acl1"
+
+
+@pytest.mark.parametrize("lpf, ok", [(2, True), (1, False)])
+def test_hardware_links_per_fpga(lpf, ok):
+    hw = topomux.HardwareBackend(
+        topomux.NodeMapping(fpgas_per_node=3, links_per_fpga=lpf),
+    )
+    if ok:
+        assert len(hw.emit(topomux.ring(3))) == 3
+    else:
+        with pytest.raises(ValueError, match="FPGAs have links 0..0"):
+            hw.emit(topomux.ring(3))
+
+
+def test_hardware_links_per_fpga_checks_unused_links():
+    g = topomux.loopback(1, links_per_rank=1)
+    g.add_node((0, 4))
+    hw = topomux.HardwareBackend(topomux.NodeMapping(links_per_fpga=4))
+    with pytest.raises(ValueError, match=r"Node \(0, 4\)"):
+        hw.emit(g)
+
+
+def test_hardware_without_links_per_fpga_allows_any_link():
+    g = topomux.loopback(1, links_per_rank=8)
+    assert topomux.HardwareBackend().emit(g)[-1] == (
+        "--fpgalink=n00:acl0:ch7-n00:acl0:ch7"
+    )

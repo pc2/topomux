@@ -80,6 +80,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="FPGAs per physical node (default: 3)",
     )
     parser.add_argument(
+        "--links-per-fpga",
+        type=int,
+        default=None,
+        help="Reject links outside 0..N-1 (default: no check)",
+    )
+    parser.add_argument(
         "--gui-url",
         action="store_true",
         help="Print fpgalink-gui URL",
@@ -111,7 +117,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # Emit output
     if args.backend == "hardware":
-        mapping = NodeMapping(fpgas_per_node=args.fpgas_per_node)
+        mapping = NodeMapping(
+            fpgas_per_node=args.fpgas_per_node,
+            links_per_fpga=args.links_per_fpga,
+        )
         backend = HardwareBackend(mapping=mapping)
         if args.gui_url:
             print(backend.emit_gui_url(graph))
