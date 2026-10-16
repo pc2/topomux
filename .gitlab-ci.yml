@@ -34,6 +34,18 @@ setup:venv:
       - .venv
 
 # ==========================================================================
+# Unit tests: CPU only, gate the FPGA jobs
+# ==========================================================================
+
+test:unit:
+  stage: test
+  variables:
+    SCHEDULER_PARAMETERS: "-A ${ACCOUNT} -p normal -t 00:10:00 -n 1"
+  needs: [setup:venv]
+  script:
+    - pytest -v
+
+# ==========================================================================
 # Xilinx U280 tests (3 FPGAs per node, 2 channels each)
 # ==========================================================================
 
@@ -48,7 +60,7 @@ setup:venv:
       --constraint="xilinx_u280_xrt${XRT_VER}"
       -x ${XILINX_EXCLUDE_NODES}
       -t 01:00:00 -N 1
-  needs: [setup:venv]
+  needs: [setup:venv, test:unit]
 
 test:xilinx:loopback:
   extends: .xilinx_test
@@ -86,7 +98,7 @@ test:xilinx:ring:
       --constraint="bittware_520n_20.4.0_max"
       -x ${BITTWARE_EXCLUDE_NODES}
       -t 00:30:00 -N 1
-  needs: [setup:venv]
+  needs: [setup:venv, test:unit]
 
 test:bittware:loopback:
   extends: .bittware_test

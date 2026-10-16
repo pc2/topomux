@@ -24,6 +24,18 @@ make venv
 source .venv/bin/activate
 ```
 
+## Tests
+
+`make venv` installs the `test` extra.
+Otherwise install it with `uv pip install -e ".[test]"`.
+
+```bash
+pytest
+```
+
+The unit tests run on CPU only and need no FPGAs.
+In CI they run before the hardware jobs, which only start if the unit tests pass.
+
 ## CLI
 
 Four topologies ship:
