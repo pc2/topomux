@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import numbers
 from pathlib import Path
+from typing import IO
 
 import networkx as nx
 
@@ -70,6 +72,43 @@ def from_file(path: str | Path) -> nx.Graph:
 
     validate(g)
     return g
+
+
+def from_json(source: str | Path | IO[str]) -> nx.Graph:
+    """Load a node-link JSON graph, as written by ``to_json`` or
+    ``json.dump(nx.node_link_data(g, edges="edges"), f)``.
+
+    ``source`` is a path or an open text file. Node ids are
+    ``[rank, link]`` lists; they become ``(rank, link)`` tuples."""
+    if isinstance(source, (str, Path)):
+        text = Path(source).read_text()
+    else:
+        text = source.read()
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"invalid JSON: {e}") from None
+    if not isinstance(data, dict):
+        raise ValueError("node-link JSON must be an object")
+    if "links" in data and "edges" not in data:
+        raise ValueError(
+            'node-link JSON uses the old "links" key; write it with '
+            'nx.node_link_data(g, edges="edges") or topomux.to_json(g)'
+        )
+    if data.get("directed"):
+        raise ValueError("directed graphs are not supported")
+    try:
+        g = nx.node_link_graph(data, edges="edges")
+    except (KeyError, TypeError, nx.NetworkXError) as e:
+        raise ValueError(f"invalid node-link JSON: {e!r}") from None
+    validate(g)
+    return g
+
+
+def to_json(g: nx.Graph) -> str:
+    """Serialize a topology as node-link JSON, readable by ``from_json``."""
+    validate(g)
+    return json.dumps(nx.node_link_data(g, edges="edges"))
 
 
 def _parse_edge_line(g: nx.Graph, line: str) -> None:

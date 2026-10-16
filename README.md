@@ -52,7 +52,7 @@ The examples use the lowercase forms.
 
 | Short       | Long                 | Applies to | Meaning |
 |-------------|----------------------|------------|---------|
-| `-f`, `-F`  | `--file`             | all        | Read the topology from a `.topo` file |
+| `-f`, `-F`  | `--file`             | all        | Read the topology from a `.topo` file, or [node-link JSON](#node-link-json) if it ends in `.json` or is `-` (stdin) |
 | `-b`, `-B`  | `--backend`          | all        | `hardware` or `emulation` |
 | `-p`, `-P`  | `--platform`         | all        | Set `-n` and `-c` for a known system, see [Platforms](#platforms) |
 | `-n`, `-N`  | `--fpgas-per-node`   | hardware   | FPGAs per physical node (default: 3) |
@@ -77,6 +77,10 @@ topomux loopback 2 -b hardware -p n2s10
 # From topology file
 topomux -f topologies/xilinx_ring.topo -b hardware -p n2u280
 
+# From a NetworkX graph as node-link JSON, as a file or on stdin
+topomux -f ring.json -b hardware -p n2u280
+python make_topology.py | topomux -f - -b hardware -p n2u280
+
 # Emulation: prints mkdir/mkfifo/ln-s commands. Pipe to bash to apply.
 topomux ring 4 -b emulation -d /tmp/pipes
 topomux ring 4 -b emulation -d /tmp/pipes | bash
@@ -91,6 +95,8 @@ topomux ring 3 -b hardware -g
 ## Library
 
 ```python
+from pathlib import Path
+
 import topomux
 
 # Standard topologies - pick direction by function name
@@ -101,6 +107,10 @@ g = topomux.pair(3)
 
 # From file
 g = topomux.from_file("topologies/some.topo")
+g = topomux.from_json("ring.json")   # node-link JSON, path or open file
+
+# Serialize for the CLI (-f ring.json or -f -)
+Path("ring.json").write_text(topomux.to_json(g))
 
 # Arbitrary edges
 g = topomux.from_edge_list([
@@ -158,6 +168,25 @@ Explicit `-n` or `-c` flags override the platform's values.
 | `n2s10`  | Noctua 2, Bittware 520N (Stratix 10) | 2 | 4 |
 
 In the library, `topomux.PLATFORMS` maps each name to its `NodeMapping`.
+
+## Node-link JSON
+
+`-f` reads [node-link JSON](https://networkx.org/documentation/stable/reference/readwrite/generated/networkx.readwrite.json_graph.node_link_data.html) when the file name ends in `.json` or is `-` (stdin).
+Write it with `topomux.to_json(g)` or with plain NetworkX:
+
+```python
+import json, sys
+import networkx as nx
+
+g = nx.Graph()
+g.add_edge((0, 1), (1, 0))
+g.add_edge((1, 1), (0, 0))
+json.dump(nx.node_link_data(g, edges="edges"), sys.stdout)
+```
+
+Node ids are `[rank, link]` lists and are loaded as `(rank, link)` tuples.
+Nodes without edges are kept.
+The same rules apply as for any graph passed to the library (see [Library](#library)); directed graphs and the pre-3.4 `"links"` key are rejected.
 
 ## Topology File Format
 

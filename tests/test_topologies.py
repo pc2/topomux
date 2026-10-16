@@ -1,3 +1,5 @@
+import io
+import json
 from pathlib import Path
 
 import networkx as nx
@@ -159,3 +161,56 @@ def test_validate_accepts_numpy_ints():
     g = nx.Graph()
     g.add_edge((np.int64(0), np.int64(1)), (np.int32(1), 0))
     topomux.validate(g)
+
+
+@pytest.mark.parametrize("g", [
+    topomux.ring(3),
+    topomux.reverse_ring(2),
+    topomux.loopback(2, links_per_rank=4),
+    topomux.pair(3),
+], ids=["ring", "reverse-ring", "loopback", "pair"])
+def test_json_round_trip(tmp_path, g):
+    f = tmp_path / "g.json"
+    f.write_text(topomux.to_json(g))
+    h = topomux.from_json(f)
+    assert set(h.nodes) == set(g.nodes)
+    assert edge_set(h) == edge_set(g)
+    assert all(isinstance(n, tuple) for n in h.nodes)
+
+
+def test_json_keeps_nodes_without_edges():
+    g = topomux.loopback(1, links_per_rank=1)
+    g.add_node((1, 0))
+    h = topomux.from_json(io.StringIO(topomux.to_json(g)))
+    assert set(h.nodes) == {(0, 0), (1, 0)}
+
+
+def test_json_from_plain_networkx(tmp_path):
+    g = nx.Graph()
+    g.add_edge((0, 0), (1, 1))
+    f = tmp_path / "g.json"
+    f.write_text(json.dumps(nx.node_link_data(g, edges="edges")))
+    assert edge_set(topomux.from_json(str(f))) == {frozenset({(0, 0), (1, 1)})}
+
+
+@pytest.mark.parametrize("text, match", [
+    ("{", "invalid JSON"),
+    ("[1]", "must be an object"),
+    ('{"nodes": [{"id": [0, 0]}], "links": []}', 'old "links" key'),
+    ('{"directed": true, "nodes": [], "edges": []}', "directed"),
+    ('{"nodes": [{"id": [0, 0]}]}', "invalid node-link JSON"),
+    ('{"nodes": [{"id": "a"}], "edges": []}', "not a"),
+    ('{"nodes": [{"id": [0, 0]}, {"id": [1, 0]}, {"id": [2, 0]}], "edges": ['
+     '{"source": [0, 0], "target": [1, 0]},'
+     '{"source": [0, 0], "target": [2, 0]}]}', "at most one"),
+])
+def test_from_json_rejects(text, match):
+    with pytest.raises(ValueError, match=match):
+        topomux.from_json(io.StringIO(text))
+
+
+def test_to_json_validates():
+    g = nx.Graph()
+    g.add_node(("0", 0))
+    with pytest.raises(ValueError):
+        topomux.to_json(g)

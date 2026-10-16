@@ -1,9 +1,13 @@
 import contextlib
+import io
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+import topomux
 from topomux.cli import build_parser, main
 
 TOPO_DIR = Path(__file__).resolve().parent.parent / "topologies"
@@ -258,3 +262,45 @@ def test_missing_topo_file(capsys, tmp_path):
 def test_invalid_topo_file(capsys, tmp_path, text, match):
     with raises_usage_error(capsys, match):
         main(["-f", _topo(tmp_path, text), "-b", "emulation"])
+
+
+@pytest.mark.parametrize("name", ["ring.json", "ring.JSON"])
+def test_json_file(capsys, tmp_path, name):
+    f = tmp_path / name
+    f.write_text(topomux.to_json(topomux.ring(3)))
+    assert run(capsys, "-f", str(f), "-b", "hardware", "-p", "n2u280") == run(
+        capsys, "ring", "3", "-b", "hardware", "-p", "n2u280")
+
+
+def test_json_stdin(capsys, monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO(topomux.to_json(topomux.pair(2))))
+    assert run(capsys, "-f", "-", "-b", "hardware") == run(
+        capsys, "pair", "2", "-b", "hardware")
+
+
+def test_invalid_json_file(capsys, tmp_path):
+    f = tmp_path / "g.json"
+    f.write_text("{")
+    with raises_usage_error(capsys, "invalid JSON"):
+        main(["-f", str(f), "-b", "hardware"])
+
+
+def test_json_pipe_end_to_end(tmp_path):
+    producer = (
+        "import json, sys, networkx as nx\n"
+        "g = nx.Graph(); g.add_edge((0, 1), (1, 0)); g.add_edge((1, 1), (0, 0))\n"
+        "json.dump(nx.node_link_data(g, edges='edges'), sys.stdout)\n"
+    )
+    data = subprocess.run(
+        [sys.executable, "-c", producer], capture_output=True, text=True,
+        check=True,
+    ).stdout
+    out = subprocess.run(
+        [sys.executable, "-m", "topomux", "-f", "-", "-b", "hardware",
+         "-p", "n2s10"],
+        input=data, capture_output=True, text=True, check=True,
+    ).stdout
+    assert out == (
+        "--fpgalink=n00:acl0:ch1-n00:acl1:ch0 "
+        "--fpgalink=n00:acl1:ch1-n00:acl0:ch0\n"
+    )

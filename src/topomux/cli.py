@@ -5,6 +5,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import networkx as nx
+
 from topomux import topologies
 from topomux.backends.emulation import BSP_REGISTRY, EmulationBackend
 from topomux.backends.hardware import PLATFORMS, HardwareBackend, NodeMapping
@@ -51,7 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--file", "-f", "-F",
         type=Path,
         dest="topo_file",
-        help="Topology file (.topo)",
+        help="Topology file: .topo, or node-link JSON if it ends in .json "
+        "or is '-' (stdin)",
     )
 
     parser.add_argument(
@@ -127,6 +130,14 @@ def _fail(parser: argparse.ArgumentParser, message: str) -> None:
     parser.exit(2, f"{parser.prog}: error: {message}\n")
 
 
+def _load_file(path: Path) -> nx.Graph:
+    if str(path) == "-":
+        return topologies.from_json(sys.stdin)
+    if path.suffix.lower() == ".json":
+        return topologies.from_json(path)
+    return topologies.from_file(path)
+
+
 def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     mapping = PLATFORMS[args.platform] if args.platform else NodeMapping()
     # Explicit flags override the platform's values.
@@ -141,7 +152,7 @@ def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     # Build topology
     if args.topo_file:
         try:
-            graph = topologies.from_file(args.topo_file)
+            graph = _load_file(args.topo_file)
         except OSError as e:
             _fail(parser, f"cannot read {args.topo_file}: {e.strerror}")
     else:
