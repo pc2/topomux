@@ -76,6 +76,12 @@ g = topomux.from_edge_list([
     ((2, 0), (0, 1)),
 ])
 
+# Any NetworkX graph whose nodes are (rank, link) int tuples
+import networkx as nx
+g = nx.Graph()
+g.add_edge((0, 1), (1, 0))
+g.add_edge((1, 1), (0, 0))
+
 # Hardware output (returns list of --fpgalink=... strings)
 hw = topomux.HardwareBackend(topomux.NodeMapping(fpgas_per_node=3))
 print(" ".join(hw.emit(g)))
@@ -94,6 +100,14 @@ emu = topomux.EmulationBackend(
 for action in emu.emit(g):
     print(action)
 ```
+
+The topology constructors are convenience helpers.
+Both backends accept any `nx.Graph` directly, so you can build or transform a topology with regular NetworkX operations and pass it to `emit()`.
+Nodes must be `(rank, link)` tuples of plain Python `int`s.
+`emit()` calls `topomux.validate(g)` and raises `ValueError` if it is not valid.
+Each edge is one bidirectional link, and a self-loop `(r, L) <-> (r, L)` is a loopback.
+Each `(rank, link)` node should appear in at most one edge.
+Node and edge attributes are ignored.
 
 ## Topology File Format
 
