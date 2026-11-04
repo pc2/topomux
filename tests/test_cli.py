@@ -81,6 +81,8 @@ def test_hardware_gui_url(capsys):
     ("xilinx_loopback.topo", "n2u280", 6),
     ("xilinx_pair.topo", "n2u280", 3),
     ("xilinx_ring.topo", "n2u280", 3),
+    ("xilinx_switch.topo", "n2u280", 3),
+    ("xilinx_direct.topo", "n2u280", 1),
     ("bittware_loopback.topo", "n2s10", 8),
     ("bittware_pair.topo", "n2s10", 4),
     ("bittware_adjacent.topo", "n2s10", 4),
@@ -304,3 +306,25 @@ def test_json_pipe_end_to_end(tmp_path):
         "--fpgalink=n00:acl0:ch1-n00:acl1:ch0 "
         "--fpgalink=n00:acl1:ch1-n00:acl0:ch0\n"
     )
+
+
+def test_hardware_switch_topology(capsys):
+    out = run(capsys, "switch", "2", "-b", "hardware", "-p", "n2u280")
+    assert out == "--fpgalink=n00:acl0:ch0-eth --fpgalink=n00:acl1:ch0-eth\n"
+
+
+def test_hardware_direct_topology(capsys):
+    out = run(capsys, "direct", "2", "-b", "hardware", "-p", "n2u280")
+    assert out == "--fpgalink=n00:acl0:ch0-n00:acl1:ch0\n"
+
+
+def test_direct_rejects_odd_rank_count(capsys):
+    with raises_usage_error(capsys, "even rank count"):
+        main(["direct", "3", "-b", "hardware"])
+
+
+def test_emulation_switch_creates_device_directory(capsys):
+    out = run(capsys, "switch", "1", "-b", "emulation", "-d", "p")
+    lines = out.splitlines()
+    assert "mkdir -p p/eth" in lines
+    assert "ln -s ../rank0/link_i0_tx p/eth/link_i0_rx" in lines

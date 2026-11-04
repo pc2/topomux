@@ -38,7 +38,7 @@ In CI they run before the hardware jobs, which only start if the unit tests pass
 
 ## CLI
 
-Four topologies ship:
+Six topologies ship:
 
 | Name           | Edge |
 |----------------|------|
@@ -46,6 +46,8 @@ Four topologies ship:
 | `reverse-ring` | `(r, 0) <-> ((r+1) % n, 1)` |
 | `loopback`     | `(r, L) <-> (r, L)` for each rank and link |
 | `pair`         | `(r, 0) <-> (r, 1)` within each rank |
+| `switch`       | `(r, 0) <-> (eth, r)`, every rank on its own port of the Ethernet switch |
+| `direct`       | `(2i, 0) <-> (2i+1, 0)`, ranks connected in pairs without a switch |
 
 Every option has a lowercase and an uppercase short form with the same meaning (`-p` = `-P` = `--platform`).
 The examples use the lowercase forms.
@@ -157,6 +159,14 @@ Each `(rank, link)` node must appear in at most one edge.
 A node without edges is possible to setup, and still gets an rank directory in the emulation backendend.
 Node and edge attributes are ignored.
 
+## External devices
+
+A link can end at an external device instead of another FPGA, the device name takes the place of the rank and its port number the place of the link.
+The only device so far is `eth`, the Ethernet switch, `switch 3` or `0.0 - eth.0` in a topology file and `topomux.switch(3)` in the library connect FPGA links to it.
+The hardware backend emits a device endpoint as the bare `eth`, the link changer resolves it to the Ethernet switch port that belongs to the FPGA link, so the port number only tells the ports apart in the graph and in the emulation layout.
+The emulation backend lays the device out like a rank, `eth/link_i{P}_tx` and `eth/link_i{P}_rx`, so the software that stands in for the device, for example the software switch of EthernetFlow, opens its ports there.
+An edge between two device ports is rejected.
+
 ## Platforms
 
 `-p` sets `-n` (FPGAs per node) and `-c` (links per FPGA) for a known system.
@@ -202,6 +212,11 @@ pair 3
 # Explicit edges: rank.link - rank.link
 0.0 - 1.1
 2.0 - 0.1
+
+# Device ports: device.port, eth is the Ethernet switch
+0.0 - eth.0
+switch 3            # 3 ranks, link 0 of each on Ethernet switch port 0 to 2
+direct 4            # ranks 0 and 1, 2 and 3 connected on link 0
 ```
 
 ## Emulation layout
@@ -212,6 +227,8 @@ For every `(rank, link)` node the graph uses, the emulation backend creates:
 {base_dir}/rank{R}/link_i{L}_tx    FIFO
 {base_dir}/rank{R}/link_i{L}_rx    symlink wired by the graph edges
 ```
+
+A device gets the same layout under its name, `{base_dir}/eth/link_i{P}_tx` and `_rx`.
 
 ## BSP overlay
 

@@ -7,6 +7,16 @@ from typing import IO
 
 import networkx as nx
 
+# External devices a link can connect to, the name stands in for the rank of an FPGA.
+DEVICES: dict[str, str] = {
+    "eth": "Ethernet switch",
+}
+
+
+def is_device(rank) -> bool:
+    """True for the rank of an external device."""
+    return isinstance(rank, str)
+
 
 def ring(n: int) -> nx.Graph:
     """Ring topology: edge (r, 1) <-> ((r+1) % n, 0)."""
@@ -43,6 +53,24 @@ def pair(n: int) -> nx.Graph:
     return g
 
 
+def switch(n: int, link: int = 0) -> nx.Graph:
+    """Switch topology: edge (r, link) <-> ("eth", r), one Ethernet switch port per rank."""
+    g = nx.Graph()
+    for r in range(n):
+        g.add_edge((r, link), ("eth", r))
+    return g
+
+
+def direct(n: int, link: int = 0) -> nx.Graph:
+    """Direct topology: edge (2i, link) <-> (2i+1, link), ranks connected in pairs without a switch."""
+    if n % 2:
+        raise ValueError(f"direct needs an even rank count, got {n}")
+    g = nx.Graph()
+    for r in range(0, n, 2):
+        g.add_edge((r, link), (r + 1, link))
+    return g
+
+
 def from_edge_list(edges: list[tuple]) -> nx.Graph:
     """Build topology from explicit ((rank, link), (rank, link)) edge tuples."""
     g = nx.Graph()
@@ -55,8 +83,8 @@ def from_edge_list(edges: list[tuple]) -> nx.Graph:
 def from_file(path: str | Path) -> nx.Graph:
     """Parse a .topo file.
 
-    Supports edge lines (``0.1 - 1.0``) and shorthand commands
-    (``ring 4``, ``reverse-ring 4``, ``loopback 3 4``, ``pair 3``).
+    Supports edge lines (``0.1 - 1.0``, ``0.0 - eth.0``) and shorthand commands
+    (``ring 4``, ``reverse-ring 4``, ``loopback 3 4``, ``pair 3``, ``switch 3``, ``direct 4``).
     """
     g = nx.Graph()
     path = Path(path)
@@ -118,11 +146,19 @@ def _parse_edge_line(g: nx.Graph, line: str) -> None:
     g.add_edge(src, dst)
 
 
-def _parse_endpoint(s: str) -> tuple[int, int]:
+def _parse_endpoint(s: str) -> tuple[int | str, int]:
     parts = s.split(".")
     if len(parts) != 2:
-        raise ValueError(f"Invalid endpoint '{s}', expected rank.link")
-    return int(parts[0]), int(parts[1])
+        raise ValueError(f"Invalid endpoint '{s}', expected rank.link or device.port")
+    if parts[0] in DEVICES:
+        return parts[0], int(parts[1])
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        raise ValueError(
+            f"Invalid endpoint '{s}', expected rank.link or one of the devices "
+            f"{sorted(DEVICES)}"
+        ) from None
 
 
 _COMMANDS = {}
@@ -157,6 +193,18 @@ def _cmd_pair(args: list[str]) -> nx.Graph:
     return pair(int(args[0]))
 
 
+@_register("switch")
+def _cmd_switch(args: list[str]) -> nx.Graph:
+    link = int(args[1]) if len(args) >= 2 else 0
+    return switch(int(args[0]), link=link)
+
+
+@_register("direct")
+def _cmd_direct(args: list[str]) -> nx.Graph:
+    link = int(args[1]) if len(args) >= 2 else 0
+    return direct(int(args[0]), link=link)
+
+
 def _parse_command_line(g: nx.Graph, line: str) -> None:
     parts = line.split()
     cmd_name = parts[0].lower()
@@ -166,12 +214,16 @@ def _parse_command_line(g: nx.Graph, line: str) -> None:
     g.update(sub_graph)
 
 
-def ranks(g: nx.Graph) -> list[int]:
-    """Return sorted list of unique rank IDs in the graph."""
-    return sorted({r for r, _link in g.nodes})
+def _rank_key(rank) -> tuple:
+    return (is_device(rank), rank)
 
 
-def links(g: nx.Graph, rank: int) -> list[int]:
+def ranks(g: nx.Graph) -> list:
+    """Return the sorted unique ranks in the graph, FPGA ranks first, then devices."""
+    return sorted({r for r, _link in g.nodes}, key=_rank_key)
+
+
+def links(g: nx.Graph, rank) -> list[int]:
     """Return sorted list of link IDs used by the given rank."""
     return sorted({link for r, link in g.nodes if r == rank})
 
@@ -183,24 +235,29 @@ def _is_int(x) -> bool:
 
 def validate(g: nx.Graph) -> None:
     """Raise ValueError if any node is not a (rank, link) tuple of
-    non-negative integers, or if any node is part of more than one edge
-    (a self-loop counts as one)."""
+    non-negative integers or a (device, port) tuple with a known device,
+    if an edge connects two devices, or if any node is part of more than
+    one edge (a self-loop counts as one)."""
     for node in g.nodes:
         if (
             not isinstance(node, tuple)
             or len(node) != 2
-            or not all(_is_int(x) for x in node)
+            or not (_is_int(node[0]) or node[0] in DEVICES)
+            or not _is_int(node[1])
         ):
             raise ValueError(
-                f"Node {node!r} is not a (rank: int, link: int) tuple"
+                f"Node {node!r} is not a (rank: int, link: int) tuple or a "
+                f"(device, port: int) tuple with a device from {sorted(DEVICES)}"
             )
-        if node[0] < 0 or node[1] < 0:
+        if (_is_int(node[0]) and node[0] < 0) or node[1] < 0:
             raise ValueError(
                 f"Node {node!r} has a negative rank or link"
             )
 
-    incident: dict[tuple[int, int], list[tuple]] = {}
+    incident: dict[tuple, list[tuple]] = {}
     for u, v in g.edges():
+        if is_device(u[0]) and is_device(v[0]):
+            raise ValueError(f"Edge {u!r} - {v!r} connects two devices")
         incident.setdefault(u, []).append((u, v))
         if v != u:
             incident.setdefault(v, []).append((u, v))

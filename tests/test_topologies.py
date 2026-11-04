@@ -214,3 +214,69 @@ def test_to_json_validates():
     g.add_node(("0", 0))
     with pytest.raises(ValueError):
         topomux.to_json(g)
+
+
+def test_switch():
+    assert edge_set(topomux.switch(2)) == {
+        frozenset({(0, 0), ("eth", 0)}),
+        frozenset({(1, 0), ("eth", 1)}),
+    }
+
+
+def test_switch_other_link():
+    assert edge_set(topomux.switch(1, link=1)) == {
+        frozenset({(0, 1), ("eth", 0)}),
+    }
+
+
+def test_direct():
+    assert edge_set(topomux.direct(4)) == {
+        frozenset({(0, 0), (1, 0)}),
+        frozenset({(2, 0), (3, 0)}),
+    }
+
+
+def test_direct_rejects_odd_rank_count():
+    with pytest.raises(ValueError, match="even"):
+        topomux.direct(3)
+
+
+def test_from_file_device_endpoint(tmp_path):
+    f = tmp_path / "t.topo"
+    f.write_text("0.0 - eth.3\ndirect 2 1\n")
+    assert edge_set(topomux.from_file(f)) == {
+        frozenset({(0, 0), ("eth", 3)}),
+        frozenset({(0, 1), (1, 1)}),
+    }
+
+
+def test_from_file_unknown_device(tmp_path):
+    f = tmp_path / "t.topo"
+    f.write_text("0.0 - wifi.0\n")
+    with pytest.raises(ValueError, match="Invalid endpoint"):
+        topomux.from_file(f)
+
+
+def test_validate_rejects_unknown_device():
+    g = nx.Graph()
+    g.add_node(("wifi", 0))
+    with pytest.raises(ValueError, match="not a"):
+        topomux.validate(g)
+
+
+def test_validate_rejects_device_to_device_edge():
+    g = nx.Graph()
+    g.add_edge(("eth", 0), ("eth", 1))
+    with pytest.raises(ValueError, match="two devices"):
+        topomux.validate(g)
+
+
+def test_ranks_lists_devices_last():
+    assert topomux.ranks(topomux.switch(2)) == [0, 1, "eth"]
+    assert topomux.links(topomux.switch(2), "eth") == [0, 1]
+
+
+def test_json_round_trip_with_device():
+    g = topomux.switch(2)
+    h = topomux.from_json(io.StringIO(topomux.to_json(g)))
+    assert edge_set(h) == edge_set(g)

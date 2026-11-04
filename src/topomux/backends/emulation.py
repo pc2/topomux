@@ -5,22 +5,23 @@ from pathlib import Path
 
 import networkx as nx
 
-from topomux.topologies import links as links_of, ranks, validate
+from topomux.topologies import is_device, links as links_of, ranks, validate
 
 
 class LinkNaming:
-    """Per-rank directory layout: rank{R}/link_i{L}_{tx,rx}."""
+    """Per-rank directory layout: rank{R}/link_i{L}_{tx,rx}, a device uses
+    its name as the directory: eth/link_i{P}_{tx,rx}."""
 
-    def rank_dir(self, base_dir: Path, rank: int) -> Path:
-        return base_dir / f"rank{rank}"
+    def rank_dir(self, base_dir: Path, rank) -> Path:
+        return base_dir / (rank if is_device(rank) else f"rank{rank}")
 
-    def tx_path(self, base_dir: Path, rank: int, link: int) -> Path:
+    def tx_path(self, base_dir: Path, rank, link: int) -> Path:
         return self.rank_dir(base_dir, rank) / f"link_i{link}_tx"
 
-    def rx_path(self, base_dir: Path, rank: int, link: int) -> Path:
+    def rx_path(self, base_dir: Path, rank, link: int) -> Path:
         return self.rank_dir(base_dir, rank) / f"link_i{link}_rx"
 
-    def directories(self, base_dir: Path, rank_ids: list[int]) -> list[Path]:
+    def directories(self, base_dir: Path, rank_ids: list) -> list[Path]:
         return [self.rank_dir(base_dir, r) for r in rank_ids]
 
 
@@ -72,7 +73,8 @@ def _symlink_target(target: Path, link: Path) -> str:
 class EmulationBackend:
     """Emit shell commands that set up unix FIFOs and symlinks for software
     emulation. Pure: never touches the filesystem. Caller pipes stdout to
-    `bash` to actually create the files."""
+    `bash` to actually create the files. A device gets the same layout as a
+    rank, so the software standing in for the device opens its ports there."""
 
     def __init__(
         self,
@@ -90,7 +92,7 @@ class EmulationBackend:
         if self.bsp is not None:
             num_links = self.bsp.num_links()
             for rank, link in graph.nodes:
-                if link >= num_links:
+                if not is_device(rank) and link >= num_links:
                     raise ValueError(
                         f"Node {(rank, link)!r}: BSP '{self.bsp.name}' has "
                         f"links 0..{num_links - 1}"
@@ -103,7 +105,7 @@ class EmulationBackend:
 
         created_fifos: set[Path] = set()
 
-        def _ensure_tx_fifo(rank: int, link: int) -> Path:
+        def _ensure_tx_fifo(rank, link: int) -> Path:
             tx = self.naming.tx_path(self.base_dir, rank, link)
             if tx not in created_fifos:
                 actions.append(f"mkfifo {tx}")
@@ -131,6 +133,8 @@ class EmulationBackend:
 
         if self.bsp is not None:
             for rank in rank_ids:
+                if is_device(rank):
+                    continue
                 for link in links_of(graph, rank):
                     # Unused link: no FIFO exists, so no fd symlinks either.
                     if nx.is_isolate(graph, (rank, link)):

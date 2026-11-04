@@ -16,6 +16,8 @@ TOPOLOGIES = {
     "reverse-ring": topologies.reverse_ring,
     "loopback": topologies.loopback,
     "pair": topologies.pair,
+    "switch": topologies.switch,
+    "direct": topologies.direct,
 }
 
 

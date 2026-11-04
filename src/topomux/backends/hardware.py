@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import networkx as nx
 
-from topomux.topologies import validate
+from topomux.topologies import is_device, validate
 
 
 @dataclass
@@ -39,10 +39,17 @@ PLATFORMS: dict[str, NodeMapping] = {
 class HardwareBackend:
     """Generates --fpgalink=... strings for any toolchain that consumes the
     Xilinx / oneAPI fpgalink syntax. Callers prepend their own tool name
-    (changeFPGAlinks, changeFPGAlinksXilinx, ...)."""
+    (changeFPGAlinks, changeFPGAlinksXilinx, ...). A device endpoint is the
+    bare device name, ``eth`` for the Ethernet switch, the link changer resolves
+    it to the switch port that belongs to the FPGA link."""
 
     def __init__(self, mapping: NodeMapping | None = None):
         self.mapping = mapping or NodeMapping()
+
+    def endpoint(self, rank, link: int) -> str:
+        if is_device(rank):
+            return str(rank)
+        return f"{self.mapping.format(rank)}:ch{link}"
 
     def emit(self, graph: nx.Graph) -> list[str]:
         """Return list of --fpgalink=... strings, one per edge."""
@@ -50,16 +57,16 @@ class HardwareBackend:
         lpf = self.mapping.links_per_fpga
         if lpf is not None:
             for rank, link in graph.nodes:
-                if link >= lpf:
+                if not is_device(rank) and link >= lpf:
                     raise ValueError(
                         f"Node {(rank, link)!r}: FPGAs have links "
                         f"0..{lpf - 1}"
                     )
         links: list[str] = []
         for (r1, l1), (r2, l2) in graph.edges:
-            src = f"{self.mapping.format(r1)}:ch{l1}"
-            dst = f"{self.mapping.format(r2)}:ch{l2}"
-            links.append(f"--fpgalink={src}-{dst}")
+            links.append(
+                f"--fpgalink={self.endpoint(r1, l1)}-{self.endpoint(r2, l2)}"
+            )
         return links
 
     def emit_gui_url(self, graph: nx.Graph) -> str:

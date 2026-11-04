@@ -235,3 +235,55 @@ def test_platforms():
         fpgas_per_node=3, links_per_fpga=2)
     assert topomux.PLATFORMS["n2s10"] == topomux.NodeMapping(
         fpgas_per_node=2, links_per_fpga=4)
+
+
+def test_hardware_switch():
+    hw = topomux.HardwareBackend(topomux.PLATFORMS["n2u280"])
+    assert hw.emit(topomux.switch(2)) == [
+        "--fpgalink=n00:acl0:ch0-eth",
+        "--fpgalink=n00:acl1:ch0-eth",
+    ]
+
+
+def test_hardware_direct():
+    hw = topomux.HardwareBackend(topomux.PLATFORMS["n2u280"])
+    assert hw.emit(topomux.direct(2)) == [
+        "--fpgalink=n00:acl0:ch0-n00:acl1:ch0",
+    ]
+
+
+def test_hardware_device_port_is_not_range_checked():
+    hw = topomux.HardwareBackend(topomux.NodeMapping(links_per_fpga=1))
+    assert hw.emit(topomux.switch(3))[-1] == "--fpgalink=n00:acl2:ch0-eth"
+
+
+def test_emulation_switch():
+    emu = topomux.EmulationBackend(base_dir="p")
+    assert emu.emit(topomux.switch(1)) == [
+        "mkdir -p p/rank0",
+        "mkdir -p p/eth",
+        "mkfifo p/rank0/link_i0_tx",
+        "mkfifo p/eth/link_i0_tx",
+        "ln -s ../eth/link_i0_tx p/rank0/link_i0_rx",
+        "ln -s ../rank0/link_i0_tx p/eth/link_i0_rx",
+    ]
+
+
+def test_emulation_bsp_skips_devices():
+    emu = topomux.EmulationBackend(
+        base_dir="p", bsp=topomux.BittwareS10BSP(),
+    )
+    actions = emu.emit(topomux.switch(1))
+    assert "ln -s link_i0_tx p/rank0/1" in actions
+    assert not any(a.endswith("p/eth/0") or a.endswith("p/eth/1") for a in actions)
+
+
+def test_emulation_switch_applies_cleanly(tmp_path):
+    g = topomux.switch(2)
+    emu = topomux.EmulationBackend(base_dir=tmp_path / "pipes")
+    _apply(emu.emit(g), cwd=tmp_path)
+    for r in range(2):
+        rx = tmp_path / "pipes" / "eth" / f"link_i{r}_rx"
+        tx = tmp_path / "pipes" / f"rank{r}" / "link_i0_tx"
+        assert rx.resolve() == tx.resolve()
+        assert stat.S_ISFIFO(os.stat(rx).st_mode)

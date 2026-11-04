@@ -3,6 +3,8 @@ from topomux.topologies import (
     reverse_ring,
     loopback,
     pair,
+    switch,
+    direct,
     from_edge_list,
     from_file,
     from_json,
@@ -10,6 +12,8 @@ from topomux.topologies import (
     ranks,
     links,
     validate,
+    DEVICES,
+    is_device,
 )
 from topomux.backends.hardware import PLATFORMS, HardwareBackend, NodeMapping
 from topomux.backends.emulation import (
@@ -25,6 +29,8 @@ __all__ = [
     "reverse_ring",
     "loopback",
     "pair",
+    "switch",
+    "direct",
     "from_edge_list",
     "from_file",
     "from_json",
@@ -32,6 +38,8 @@ __all__ = [
     "ranks",
     "links",
     "validate",
+    "DEVICES",
+    "is_device",
     "HardwareBackend",
     "NodeMapping",
     "PLATFORMS",
