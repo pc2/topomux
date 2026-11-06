@@ -53,21 +53,25 @@ def pair(n: int) -> nx.Graph:
     return g
 
 
-def switch(n: int, link: int = 0) -> nx.Graph:
-    """Switch topology: edge (r, link) <-> ("eth", r), one Ethernet switch port per rank."""
+def switch(n: int, links_per_rank: int = 1) -> nx.Graph:
+    """Switch topology: every link of every rank on its own Ethernet switch port,
+    edge (r, l) <-> ("eth", r * links_per_rank + l)."""
     g = nx.Graph()
     for r in range(n):
-        g.add_edge((r, link), ("eth", r))
+        for link in range(links_per_rank):
+            g.add_edge((r, link), ("eth", r * links_per_rank + link))
     return g
 
 
-def direct(n: int, link: int = 0) -> nx.Graph:
-    """Direct topology: edge (2i, link) <-> (2i+1, link), ranks connected in pairs without a switch."""
+def direct(n: int, links_per_rank: int = 1) -> nx.Graph:
+    """Direct topology: ranks connected in pairs without a switch, every link to the same link
+    of the partner, edge (2i, l) <-> (2i+1, l)."""
     if n % 2:
         raise ValueError(f"direct needs an even rank count, got {n}")
     g = nx.Graph()
     for r in range(0, n, 2):
-        g.add_edge((r, link), (r + 1, link))
+        for link in range(links_per_rank):
+            g.add_edge((r, link), (r + 1, link))
     return g
 
 
@@ -195,14 +199,14 @@ def _cmd_pair(args: list[str]) -> nx.Graph:
 
 @_register("switch")
 def _cmd_switch(args: list[str]) -> nx.Graph:
-    link = int(args[1]) if len(args) >= 2 else 0
-    return switch(int(args[0]), link=link)
+    lpr = int(args[1]) if len(args) >= 2 else 1
+    return switch(int(args[0]), links_per_rank=lpr)
 
 
 @_register("direct")
 def _cmd_direct(args: list[str]) -> nx.Graph:
-    link = int(args[1]) if len(args) >= 2 else 0
-    return direct(int(args[0]), link=link)
+    lpr = int(args[1]) if len(args) >= 2 else 1
+    return direct(int(args[0]), links_per_rank=lpr)
 
 
 def _parse_command_line(g: nx.Graph, line: str) -> None:

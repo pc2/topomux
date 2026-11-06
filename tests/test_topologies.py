@@ -223,17 +223,35 @@ def test_switch():
     }
 
 
-def test_switch_other_link():
-    assert edge_set(topomux.switch(1, link=1)) == {
-        frozenset({(0, 1), ("eth", 0)}),
-    }
-
-
 def test_direct():
     assert edge_set(topomux.direct(4)) == {
         frozenset({(0, 0), (1, 0)}),
         frozenset({(2, 0), (3, 0)}),
     }
+
+
+def test_direct_pairs_every_link_with_the_same_link_of_the_partner():
+    assert edge_set(topomux.direct(2, links_per_rank=2)) == {
+        frozenset({(0, 0), (1, 0)}),
+        frozenset({(0, 1), (1, 1)}),
+    }
+
+
+def test_switch_gives_every_link_its_own_port():
+    assert edge_set(topomux.switch(2, links_per_rank=2)) == {
+        frozenset({(0, 0), ("eth", 0)}),
+        frozenset({(0, 1), ("eth", 1)}),
+        frozenset({(1, 0), ("eth", 2)}),
+        frozenset({(1, 1), ("eth", 3)}),
+    }
+
+
+def test_switch_and_direct_commands_take_a_link_count(tmp_path):
+    path = tmp_path / "two_links.topo"
+    path.write_text("switch 2 2\n")
+    assert edge_set(topomux.from_file(path)) == edge_set(topomux.switch(2, links_per_rank=2))
+    path.write_text("direct 2 2\n")
+    assert edge_set(topomux.from_file(path)) == edge_set(topomux.direct(2, links_per_rank=2))
 
 
 def test_direct_rejects_odd_rank_count():
@@ -243,10 +261,10 @@ def test_direct_rejects_odd_rank_count():
 
 def test_from_file_device_endpoint(tmp_path):
     f = tmp_path / "t.topo"
-    f.write_text("0.0 - eth.3\ndirect 2 1\n")
+    f.write_text("0.1 - eth.3\ndirect 2 1\n")
     assert edge_set(topomux.from_file(f)) == {
-        frozenset({(0, 0), ("eth", 3)}),
-        frozenset({(0, 1), (1, 1)}),
+        frozenset({(0, 1), ("eth", 3)}),
+        frozenset({(0, 0), (1, 0)}),
     }
 
 

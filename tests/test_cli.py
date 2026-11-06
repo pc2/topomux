@@ -308,14 +308,36 @@ def test_json_pipe_end_to_end(tmp_path):
     )
 
 
-def test_hardware_switch_topology(capsys):
+def test_hardware_switch_connects_every_link_of_the_platform(capsys):
     out = run(capsys, "switch", "2", "-b", "hardware", "-p", "n2u280")
+    assert sorted(out.split()) == [
+        "--fpgalink=n00:acl0:ch0-eth", "--fpgalink=n00:acl0:ch1-eth",
+        "--fpgalink=n00:acl1:ch0-eth", "--fpgalink=n00:acl1:ch1-eth",
+    ]
+
+
+def test_hardware_switch_with_one_link(capsys):
+    out = run(capsys, "switch", "2", "-b", "hardware", "-p", "n2u280", "-c", "1")
     assert out == "--fpgalink=n00:acl0:ch0-eth --fpgalink=n00:acl1:ch0-eth\n"
 
 
-def test_hardware_direct_topology(capsys):
+def test_hardware_direct_pairs_every_link_of_the_platform(capsys):
     out = run(capsys, "direct", "2", "-b", "hardware", "-p", "n2u280")
+    assert sorted(out.split()) == [
+        "--fpgalink=n00:acl0:ch0-n00:acl1:ch0",
+        "--fpgalink=n00:acl0:ch1-n00:acl1:ch1",
+    ]
+
+
+def test_hardware_direct_with_one_link(capsys):
+    out = run(capsys, "direct", "2", "-b", "hardware", "-p", "n2u280", "-c", "1")
     assert out == "--fpgalink=n00:acl0:ch0-n00:acl1:ch0\n"
+
+
+def test_emulation_switch_without_platform_uses_link_zero(capsys):
+    out = run(capsys, "switch", "2", "-b", "emulation", "-d", "p")
+    assert "rank1/link_i1_tx" not in out
+    assert "p/eth/link_i1_rx" in out
 
 
 def test_direct_rejects_odd_rank_count(capsys):

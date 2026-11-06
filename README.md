@@ -46,8 +46,8 @@ Six topologies ship:
 | `reverse-ring` | `(r, 0) <-> ((r+1) % n, 1)` |
 | `loopback`     | `(r, L) <-> (r, L)` for each rank and link |
 | `pair`         | `(r, 0) <-> (r, 1)` within each rank |
-| `switch`       | `(r, 0) <-> (eth, r)`, every rank on its own port of the Ethernet switch |
-| `direct`       | `(2i, 0) <-> (2i+1, 0)`, ranks connected in pairs without a switch |
+| `switch`       | `(r, L) <-> (eth, r * links + L)` for each rank and link, every link on its own port of the Ethernet switch |
+| `direct`       | `(2i, L) <-> (2i+1, L)` for each link, ranks connected in pairs without a switch |
 
 Every option has a lowercase and an uppercase short form with the same meaning (`-p` = `-P` = `--platform`).
 The examples use the lowercase forms.
@@ -58,7 +58,7 @@ The examples use the lowercase forms.
 | `-b`, `-B`  | `--backend`          | all        | `hardware` or `emulation` |
 | `-p`, `-P`  | `--platform`         | all        | Set `-n` and `-c` for a known system, see [Platforms](#platforms) |
 | `-n`, `-N`  | `--fpgas-per-node`   | hardware   | FPGAs per physical node (default: 3) |
-| `-c`, `-C`  | `--links-per-fpga`   | all        | Links each FPGA has: `loopback` loops all of them (default: 2), the hardware backend rejects links outside `0..N-1` (default: no check) |
+| `-c`, `-C`  | `--links-per-fpga`   | all        | Links each FPGA has: `loopback` loops all of them (default: 2), `switch` and `direct` connect all of them (default: 1), the hardware backend rejects links outside `0..N-1` (default: no check) |
 | `-g`, `-G`  | `--gui-url`          | hardware   | Print the fpgalink-gui URL instead |
 | `-d`, `-D`  | `--base-dir`         | emulation  | Base directory for the pipes (default: `.`) |
 | `-s`, `-S`  | `--bsp`              | emulation  | Add fd-number symlinks for this BSP, see [BSP overlay](#bsp-overlay) |
@@ -216,7 +216,9 @@ pair 3
 # Device ports: device.port, eth is the Ethernet switch
 0.0 - eth.0
 switch 3            # 3 ranks, link 0 of each on Ethernet switch port 0 to 2
+switch 3 2          # 3 ranks, links 0 and 1 of each on Ethernet switch port 0 to 5
 direct 4            # ranks 0 and 1, 2 and 3 connected on link 0
+direct 2 2          # ranks 0 and 1 connected on link 0 and on link 1
 ```
 
 ## Emulation layout

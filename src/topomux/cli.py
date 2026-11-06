@@ -104,9 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--links-per-fpga", "-c", "-C",
         type=_positive_int,
         default=None,
-        help="Links per FPGA: loopback loops all of them, hardware "
-        "rejects links outside 0..N-1 (default: the platform's, else "
-        "2 for loopback and no check)",
+        help="Links per FPGA: loopback loops all of them, switch and direct "
+        "connect all of them, hardware rejects links outside 0..N-1 "
+        "(default: the platform's, else 2 for loopback, 1 for switch and "
+        "direct and no check)",
     )
     parser.add_argument(
         "--gui-url", "-g", "-G",
@@ -163,11 +164,12 @@ def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
 
         topo_fn = TOPOLOGIES[args.topology]
 
-        if args.topology == "loopback":
+        if args.topology in ("loopback", "switch", "direct"):
+            default = 2 if args.topology == "loopback" else 1
             graph = topo_fn(
                 args.num_ranks,
                 links_per_rank=(
-                    2 if mapping.links_per_fpga is None
+                    default if mapping.links_per_fpga is None
                     else mapping.links_per_fpga
                 ),
             )
